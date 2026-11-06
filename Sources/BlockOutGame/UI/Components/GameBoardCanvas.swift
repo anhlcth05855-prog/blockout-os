@@ -35,13 +35,15 @@ public struct GameBoardCanvas: View {
     public let onHammerObstacle: (String) -> Void
 
     @State private var activeBlockId: String? = nil
-    @State private var dragOffset: CGSize = .zero
+    @State private var currentLimits: DragLimits? = nil
+    @State private var dragPixelX: CGFloat = 0
+    @State private var dragPixelY: CGFloat = 0
+
     @State private var particles: [Particle] = []
     @State private var floatingScores: [FloatingScore] = []
     @State private var chevronPulse: CGFloat = 0
 
-    private let doorThickness: CGFloat = 26
-    private let spacing: CGFloat = 4
+    private let doorDepth: CGFloat = 24
 
     public init(
         engine: GameEngine,
@@ -63,309 +65,394 @@ public struct GameBoardCanvas: View {
 
     public var body: some View {
         GeometryReader { proxy in
-            let availableW = proxy.size.width - 24
-            let availableH = proxy.size.height - 24
+            // Bound strictly to square so it never overflows vertical or horizontal bounds
+            let pad: CGFloat = 16
+            let availW = max(100, proxy.size.width - pad * 2)
+            let availH = max(100, proxy.size.height - pad * 2)
+            let boardSize = min(availW, availH)
 
-            let cols = CGFloat(engine.gridWidth)
-            let rows = CGFloat(engine.gridHeight)
+            let doorMargin: CGFloat = doorDepth + 8
+            let gridInnerSize = boardSize - doorMargin * 2
+            let cols = CGFloat(max(1, engine.gridWidth))
+            let rows = CGFloat(max(1, engine.gridHeight))
+            let cellSize = min(gridInnerSize / cols, gridInnerSize / rows)
 
-            let maxCellW = (availableW - doorThickness * 2 - spacing * (cols - 1)) / cols
-            let maxCellH = (availableH - doorThickness * 2 - spacing * (rows - 1)) / rows
-            let cellSize = max(36, min(56, min(maxCellW, maxCellH)))
+            let gridActualW = cols * cellSize
+            let gridActualH = rows * cellSize
+            let gridStartX = (boardSize - gridActualW) / 2
+            let gridStartY = (boardSize - gridActualH) / 2
 
-            let gridW = cols * cellSize + (cols - 1) * spacing
-            let gridH = rows * cellSize + (rows - 1) * spacing
-            let totalW = gridW + doorThickness * 2 + 16
-            let totalH = gridH + doorThickness * 2 + 16
-
-            ZStack {
-                // Outer board border
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(activeTheme.boardBgColor)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .strokeBorder(activeTheme.boardBorderColor, lineWidth: 2)
+            ZStack(alignment: .center) {
+                // Outer board container
+                ZStack(alignment: .topLeading) {
+                    // 1. Board Frame and Background Plate
+                    boardFrameLayer(
+                        gridStartX: gridStartX,
+                        gridStartY: gridStartY,
+                        gridW: gridActualW,
+                        gridH: gridActualH
                     )
-                    .shadow(color: Color.black.opacity(0.5), radius: 14, x: 0, y: 8)
-                    .frame(width: totalW, height: totalH)
 
-                // Exit Doors on 4 sides
-                doorsLayer(cellSize: cellSize, gridW: gridW, gridH: gridH)
+                    // 2. Recessed Grid Slots
+                    gridSlotsLayer(
+                        cols: engine.gridWidth,
+                        rows: engine.gridHeight,
+                        cellSize: cellSize,
+                        gridStartX: gridStartX,
+                        gridStartY: gridStartY
+                    )
 
-                // Recessed grid slots
-                gridSlotsLayer(cols: Int(cols), rows: Int(rows), cellSize: cellSize)
-                    .frame(width: gridW, height: gridH)
+                    // 3. Exit Doors on 4 Sides
+                    doorsLayer(
+                        cellSize: cellSize,
+                        gridStartX: gridStartX,
+                        gridStartY: gridStartY,
+                        gridW: gridActualW,
+                        gridH: gridActualH
+                    )
 
-                // Obstacles (Rocks)
-                obstaclesLayer(cellSize: cellSize, gridW: gridW, gridH: gridH)
+                    // 4. Obstacles Layer
+                    obstaclesLayer(
+                        cellSize: cellSize,
+                        gridStartX: gridStartX,
+                        gridStartY: gridStartY
+                    )
 
-                // Blocks layer
-                blocksLayer(cellSize: cellSize, gridW: gridW, gridH: gridH)
+                    // 5. Blocks Layer
+                    blocksLayer(
+                        cellSize: cellSize,
+                        gridStartX: gridStartX,
+                        gridStartY: gridStartY
+                    )
 
-                // Particles layer
-                particlesLayer()
+                    // 6. Particles Layer
+                    particlesLayer()
 
-                // Floating scores layer
-                floatingScoresLayer()
+                    // 7. Floating Scores Layer
+                    floatingScoresLayer()
+                }
+                .frame(width: boardSize, height: boardSize)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                chevronPulse = 4
+                chevronPulse = 3.5
+            }
+        }
+    }
+
+    // MARK: - Board Frame Layer
+    @ViewBuilder
+    private func boardFrameLayer(gridStartX: CGFloat, gridStartY: CGFloat, gridW: CGFloat, gridH: CGFloat) -> some View {
+        let framePadding = doorDepth + 6
+        let frameX = gridStartX - framePadding
+        let frameY = gridStartY - framePadding
+        let frameW = gridW + framePadding * 2
+        let frameH = gridH + framePadding * 2
+
+        // Outer tubular frame
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [Color(hex: 0x1E233D), Color(hex: 0x141829)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Color(hex: 0x3A4468), lineWidth: 2)
+            )
+            .shadow(color: Color.black.opacity(0.55), radius: 12, x: 0, y: 6)
+            .frame(width: frameW, height: frameH)
+            .offset(x: frameX, y: frameY)
+
+        // Inner board base plate
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(Color(hex: 0x333E65))
+            .frame(width: gridW + 4, height: gridH + 4)
+            .offset(x: gridStartX - 2, y: gridStartY - 2)
+    }
+
+    // MARK: - Recessed Grid Slots
+    @ViewBuilder
+    private func gridSlotsLayer(cols: Int, rows: Int, cellSize: CGFloat, gridStartX: CGFloat, gridStartY: CGFloat) -> some View {
+        let tileInset: CGFloat = 2.0
+        let tileSize = cellSize - tileInset * 2
+
+        ForEach(0..<rows, id: \.self) { r in
+            ForEach(0..<cols, id: \.self) { c in
+                let tx = gridStartX + CGFloat(c) * cellSize + tileInset
+                let ty = gridStartY + CGFloat(r) * cellSize + tileInset
+
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(hex: 0x4C5882))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color(hex: 0x576594), lineWidth: 1)
+                    )
+                    .frame(width: tileSize, height: tileSize)
+                    .offset(x: tx, y: ty)
             }
         }
     }
 
     // MARK: - Doors Layer
     @ViewBuilder
-    private func doorsLayer(cellSize: CGFloat, gridW: CGFloat, gridH: CGFloat) -> some View {
+    private func doorsLayer(cellSize: CGFloat, gridStartX: CGFloat, gridStartY: CGFloat, gridW: CGFloat, gridH: CGFloat) -> some View {
         ForEach(engine.doors) { door in
-            let span = CGFloat(door.widthCells)
-            let length = span * cellSize + (span - 1) * spacing
-            let offsetStart = CGFloat(door.index) * (cellSize + spacing) + length / 2
+            let doorSpan = CGFloat(door.widthCells) * cellSize - 4
+            let startCoord = CGFloat(door.index) * cellSize + 2
 
             switch door.side {
             case .top:
-                doorView(door: door, length: length, thickness: doorThickness, isHorizontal: true, arrow: "chevron.up")
-                    .position(x: offsetStart + doorThickness + 8, y: doorThickness / 2 + 4)
+                doorView(door: door, width: doorSpan, height: doorDepth, arrow: "chevron.up")
+                    .offset(x: gridStartX + startCoord, y: gridStartY - doorDepth)
             case .bottom:
-                doorView(door: door, length: length, thickness: doorThickness, isHorizontal: true, arrow: "chevron.down")
-                    .position(x: offsetStart + doorThickness + 8, y: gridH + doorThickness + doorThickness / 2 + 12)
+                doorView(door: door, width: doorSpan, height: doorDepth, arrow: "chevron.down")
+                    .offset(x: gridStartX + startCoord, y: gridStartY + gridH)
             case .left:
-                doorView(door: door, length: length, thickness: doorThickness, isHorizontal: false, arrow: "chevron.left")
-                    .position(x: doorThickness / 2 + 4, y: offsetStart + doorThickness + 8)
+                doorView(door: door, width: doorDepth, height: doorSpan, arrow: "chevron.left")
+                    .offset(x: gridStartX - doorDepth, y: gridStartY + startCoord)
             case .right:
-                doorView(door: door, length: length, thickness: doorThickness, isHorizontal: false, arrow: "chevron.right")
-                    .position(x: gridW + doorThickness + doorThickness / 2 + 12, y: offsetStart + doorThickness + 8)
+                doorView(door: door, width: doorDepth, height: doorSpan, arrow: "chevron.right")
+                    .offset(x: gridStartX + gridW, y: gridStartY + startCoord)
             }
         }
     }
 
-    private func doorView(door: ExitDoor, length: CGFloat, thickness: CGFloat, isHorizontal: Bool, arrow: String) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+    private func doorView(door: ExitDoor, width: CGFloat, height: CGFloat, arrow: String) -> some View {
+        let isHorizontal = door.side == .top || door.side == .bottom
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [door.color.mainColor.opacity(0.9), door.color.darkColor],
+                        colors: [door.color.lightColor, door.color.mainColor],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-                .shadow(color: door.color.mainColor.opacity(0.8), radius: 8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(door.color.darkColor, lineWidth: 1.5)
+                )
+                .shadow(color: door.color.mainColor.opacity(0.6), radius: 4)
 
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.4), lineWidth: 1.5)
-
-            // Chevrons
+            // Animated directional arrow(s)
             if isHorizontal {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     ForEach(0..<max(1, door.widthCells), id: \.self) { _ in
                         Image(systemName: arrow)
-                            .font(.system(size: 11, weight: .black))
+                            .font(.system(size: 10, weight: .black))
                             .foregroundColor(.white)
                             .offset(y: door.side == .top ? -chevronPulse : chevronPulse)
                     }
                 }
             } else {
-                VStack(spacing: 6) {
+                VStack(spacing: 4) {
                     ForEach(0..<max(1, door.widthCells), id: \.self) { _ in
                         Image(systemName: arrow)
-                            .font(.system(size: 11, weight: .black))
+                            .font(.system(size: 10, weight: .black))
                             .foregroundColor(.white)
                             .offset(x: door.side == .left ? -chevronPulse : chevronPulse)
                     }
                 }
             }
         }
-        .frame(width: isHorizontal ? length : thickness, height: isHorizontal ? thickness : length)
-    }
-
-    // MARK: - Grid Slots
-    private func gridSlotsLayer(cols: Int, rows: Int, cellSize: CGFloat) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(hex: 0x0A0B14).opacity(0.85))
-
-            VStack(spacing: spacing) {
-                ForEach(0..<rows, id: \.self) { _ in
-                    HStack(spacing: spacing) {
-                        ForEach(0..<cols, id: \.self) { _ in
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.white.opacity(0.04))
-                                .overlay(
-                                    Circle()
-                                        .fill(Color.white.opacity(0.03))
-                                        .frame(width: cellSize * 0.35, height: cellSize * 0.35)
-                                )
-                                .frame(width: cellSize, height: cellSize)
-                        }
-                    }
-                }
-            }
-        }
+        .frame(width: width, height: height)
     }
 
     // MARK: - Obstacles Layer
-    private func obstaclesLayer(cellSize: CGFloat, gridW: CGFloat, gridH: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(engine.obstacles.filter { !$0.isDestroyed }) { obs in
-                let w = CGFloat(obs.width) * cellSize + CGFloat(obs.width - 1) * spacing
-                let h = CGFloat(obs.height) * cellSize + CGFloat(obs.height - 1) * spacing
-                let x = CGFloat(obs.x) * (cellSize + spacing)
-                let y = CGFloat(obs.y) * (cellSize + spacing)
+    @ViewBuilder
+    private func obstaclesLayer(cellSize: CGFloat, gridStartX: CGFloat, gridStartY: CGFloat) -> some View {
+        ForEach(engine.obstacles.filter { !$0.isDestroyed }) { obs in
+            let ox = gridStartX + CGFloat(obs.x) * cellSize + 2.5
+            let oy = gridStartY + CGFloat(obs.y) * cellSize + 2.5
+            let ow = CGFloat(obs.width) * cellSize - 5
+            let oh = CGFloat(obs.height) * cellSize - 5
 
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: 0x475569), Color(hex: 0x1E293B)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0x475569), Color(hex: 0x1E293B)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.2), lineWidth: 1.5)
-                        )
-                        .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 3)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color(hex: 0x334155), lineWidth: 2)
+                    )
+                    .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 3)
 
-                    Image(systemName: "mountain.2.fill")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(Color(hex: 0x94A3B8))
+                Image(systemName: "mountain.2.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(Color(hex: 0x94A3B8))
 
-                    if isHammerActive {
-                        Image(systemName: "hammer.fill")
-                            .font(.system(size: 24, weight: .black))
-                            .foregroundColor(.yellow)
-                            .shadow(color: .black, radius: 4)
-                    }
+                if isHammerActive {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 22, weight: .black))
+                        .foregroundColor(.yellow)
+                        .shadow(color: .black, radius: 4)
                 }
-                .frame(width: w, height: h)
-                .offset(x: x, y: y)
-                .onTapGesture {
-                    if isHammerActive {
-                        onHammerObstacle(obs.id)
-                    }
+            }
+            .frame(width: ow, height: oh)
+            .offset(x: ox, y: oy)
+            .onTapGesture {
+                if isHammerActive {
+                    onHammerObstacle(obs.id)
                 }
             }
         }
-        .frame(width: gridW, height: gridH, alignment: .topLeading)
     }
 
     // MARK: - Blocks Layer
-    private func blocksLayer(cellSize: CGFloat, gridW: CGFloat, gridH: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(engine.blocks) { block in
-                let isDragging = activeBlockId == block.id
-                let blockW = CGFloat(block.width) * cellSize + CGFloat(block.width - 1) * spacing
-                let blockH = CGFloat(block.height) * cellSize + CGFloat(block.height - 1) * spacing
+    @ViewBuilder
+    private func blocksLayer(cellSize: CGFloat, gridStartX: CGFloat, gridStartY: CGFloat) -> some View {
+        ForEach(engine.blocks) { block in
+            let isCurrent = activeBlockId == block.id
+            let offX = isCurrent ? dragPixelX : 0
+            let offY = isCurrent ? dragPixelY : 0
 
-                let posX = CGFloat(block.x) * (cellSize + spacing) + (isDragging ? dragOffset.width : 0)
-                let posY = CGFloat(block.y) * (cellSize + spacing) + (isDragging ? dragOffset.height : 0)
+            let bx = gridStartX + CGFloat(block.x) * cellSize + 2.5 + offX
+            let by = gridStartY + CGFloat(block.y) * cellSize + 2.5 + offY
+            let bw = CGFloat(block.width) * cellSize - 5
+            let bh = CGFloat(block.height) * cellSize - 5
 
-                legoBlockView(block: block, width: blockW, height: blockH, cellSize: cellSize)
-                    .frame(width: blockW, height: blockH)
-                    .offset(x: posX, y: posY)
-                    .scaleEffect(block.isEscaped ? 0.05 : (isDragging ? 1.04 : 1.0))
-                    .opacity(block.isEscaped ? 0 : 1)
-                    .animation(.spring(response: 0.28, dampingFraction: 0.72), value: block.x)
-                    .animation(.spring(response: 0.28, dampingFraction: 0.72), value: block.y)
-                    .animation(.easeOut(duration: 0.35), value: block.isEscaped)
-                    .onTapGesture {
-                        if isHammerActive {
-                            onHammerBlock(block.id)
-                        } else {
-                            // Quick escape tap
-                            if let res = engine.tryQuickEscape(blockId: block.id) {
-                                triggerEscapeEffects(block: block, side: res.escapeSide ?? .top, cellSize: cellSize)
-                                onMoveMade()
+            legoBlockView(block: block, width: bw, height: bh, cellSize: cellSize)
+                .frame(width: bw, height: bh)
+                .offset(x: bx, y: by)
+                .scaleEffect(block.isEscaped ? 0.05 : (isCurrent ? 1.03 : 1.0))
+                .opacity(block.isEscaped ? 0 : 1)
+                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: block.x)
+                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: block.y)
+                .animation(.easeOut(duration: 0.35), value: block.isEscaped)
+                .onTapGesture {
+                    if isHammerActive {
+                        onHammerBlock(block.id)
+                    } else {
+                        // Quick escape tap
+                        if let res = engine.tryQuickEscape(blockId: block.id) {
+                            if res.escaped, let side = res.escapeSide {
+                                triggerEscapeEffects(block: block, side: side, cellSize: cellSize, gridStartX: gridStartX, gridStartY: gridStartY)
+                                onBlockEscaped(block, side)
                             }
+                            onMoveMade()
                         }
                     }
-                    .gesture(
-                        DragGesture(minimumDistance: 10)
-                            .onChanged { value in
-                                guard !isHammerActive && !block.isEscaped else { return }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 4)
+                        .onChanged { value in
+                            guard !isHammerActive && !block.isEscaped else { return }
+
+                            if activeBlockId != block.id {
                                 activeBlockId = block.id
-
-                                // Constrain translation to valid direction
-                                var t = value.translation
-                                if block.direction == .horizontal {
-                                    t.height = 0
-                                } else if block.direction == .vertical {
-                                    t.width = 0
-                                }
-                                dragOffset = t
+                                currentLimits = engine.calculateLimits(block: block)
                             }
-                            .onEnded { value in
-                                guard !isHammerActive && !block.isEscaped else {
-                                    activeBlockId = nil
-                                    dragOffset = .zero
-                                    return
-                                }
 
-                                let deltaCellsX = Float(dragOffset.width / (cellSize + spacing))
-                                let deltaCellsY = Float(dragOffset.height / (cellSize + spacing))
+                            guard let limits = currentLimits else { return }
 
+                            if block.direction == .horizontal {
+                                let minPixel = CGFloat(limits.minXOnBoard - block.x) * cellSize - (limits.canEscapeLeft ? cellSize * 0.95 : 0)
+                                let maxPixel = CGFloat(limits.maxXOnBoard - block.x) * cellSize + (limits.canEscapeRight ? cellSize * 0.95 : 0)
+                                dragPixelX = min(maxPixel, max(minPixel, value.translation.width))
+                                dragPixelY = 0
+                            } else if block.direction == .vertical {
+                                let minPixel = CGFloat(limits.minYOnBoard - block.y) * cellSize - (limits.canEscapeTop ? cellSize * 0.95 : 0)
+                                let maxPixel = CGFloat(limits.maxYOnBoard - block.y) * cellSize + (limits.canEscapeBottom ? cellSize * 0.95 : 0)
+                                dragPixelX = 0
+                                dragPixelY = min(maxPixel, max(minPixel, value.translation.height))
+                            }
+                        }
+                        .onEnded { value in
+                            guard !isHammerActive && !block.isEscaped else {
                                 activeBlockId = nil
-                                dragOffset = .zero
+                                currentLimits = nil
+                                dragPixelX = 0
+                                dragPixelY = 0
+                                return
+                            }
 
-                                let isFling = abs(value.velocity.width) > 500 || abs(value.velocity.height) > 500
-                                if let res = engine.applyMove(
-                                    blockId: block.id,
-                                    deltaCellsX: deltaCellsX,
-                                    deltaCellsY: deltaCellsY,
-                                    isFling: isFling
-                                ) {
+                            let finalX = dragPixelX
+                            let finalY = dragPixelY
+                            let dist = hypot(finalX, finalY)
+
+                            activeBlockId = nil
+                            currentLimits = nil
+                            dragPixelX = 0
+                            dragPixelY = 0
+
+                            if dist < 8 {
+                                if let res = engine.tryQuickEscape(blockId: block.id) {
                                     if res.escaped, let side = res.escapeSide {
-                                        triggerEscapeEffects(block: block, side: side, cellSize: cellSize)
+                                        triggerEscapeEffects(block: block, side: side, cellSize: cellSize, gridStartX: gridStartX, gridStartY: gridStartY)
+                                        onBlockEscaped(block, side)
                                     }
                                     onMoveMade()
                                 }
+                                return
                             }
-                    )
-            }
+
+                            let deltaX = Float(finalX / cellSize)
+                            let deltaY = Float(finalY / cellSize)
+                            let isFling = abs(value.velocity.width) > 400 || abs(value.velocity.height) > 400
+
+                            if let res = engine.applyMove(blockId: block.id, deltaCellsX: deltaX, deltaCellsY: deltaY, isFling: isFling) {
+                                if res.escaped, let side = res.escapeSide {
+                                    triggerEscapeEffects(block: block, side: side, cellSize: cellSize, gridStartX: gridStartX, gridStartY: gridStartY)
+                                    onBlockEscaped(block, side)
+                                }
+                                onMoveMade()
+                            }
+                        }
+                )
         }
-        .frame(width: gridW, height: gridH, alignment: .topLeading)
     }
 
     // MARK: - Lego 3D Block View
     private func legoBlockView(block: Block, width: CGFloat, height: CGFloat, cellSize: CGFloat) -> some View {
         ZStack {
             // Drop shadow base
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(block.color.darkColor)
-                .offset(y: 4)
+                .offset(y: 3.5)
 
             // Main face gradient
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [block.color.lightColor.opacity(0.85), block.color.mainColor, block.color.darkColor],
+                        colors: [block.color.lightColor, block.color.mainColor],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
 
             // Bevel gloss rim
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.6), Color.clear, Color.black.opacity(0.2)],
+                        colors: [Color.white.opacity(0.55), Color.clear, block.color.darkColor],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
                     lineWidth: 1.5
                 )
 
-            // Studs for each cell in block
-            VStack(spacing: spacing) {
-                ForEach(0..<block.height, id: \.self) { _ in
-                    HStack(spacing: spacing) {
-                        ForEach(0..<block.width, id: \.self) { _ in
-                            studView(color: block.color, symbol: block.symbol, size: cellSize * 0.44)
-                                .frame(width: cellSize, height: cellSize)
+            // Studs for each cell in block (2x2 per cell like authentic Lego)
+            let studsX = block.width * 2
+            let studsY = block.height * 2
+            let studRadius = (width / CGFloat(studsX)) * 0.34
+
+            VStack(spacing: 0) {
+                ForEach(0..<studsY, id: \.self) { _ in
+                    HStack(spacing: 0) {
+                        ForEach(0..<studsX, id: \.self) { _ in
+                            studView(color: block.color, symbol: block.symbol, size: studRadius * 2)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                     }
                 }
@@ -373,7 +460,7 @@ public struct GameBoardCanvas: View {
 
             if isHammerActive {
                 Image(systemName: "hammer.fill")
-                    .font(.system(size: 26, weight: .black))
+                    .font(.system(size: 24, weight: .black))
                     .foregroundColor(.yellow)
                     .shadow(color: .black, radius: 4)
             }
@@ -382,6 +469,13 @@ public struct GameBoardCanvas: View {
 
     private func studView(color: BlockColor, symbol: String?, size: CGFloat) -> some View {
         ZStack {
+            // Stud base shadow
+            Circle()
+                .fill(color.darkColor.opacity(0.6))
+                .offset(y: 1.2)
+                .frame(width: size, height: size)
+
+            // Stud body
             Circle()
                 .fill(
                     LinearGradient(
@@ -390,46 +484,33 @@ public struct GameBoardCanvas: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.4), lineWidth: 1))
-                .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1.5)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.4), lineWidth: 0.8))
                 .frame(width: size, height: size)
 
-            if let sym = symbol {
-                symbolIcon(sym)
-                    .font(.system(size: size * 0.5, weight: .black))
-                    .foregroundColor(Color.white.opacity(0.9))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func symbolIcon(_ sym: String) -> some View {
-        switch sym {
-        case "star": Image(systemName: "star.fill")
-        case "diamond": Image(systemName: "suit.diamond.fill")
-        case "square": Image(systemName: "square.fill")
-        case "circle": Image(systemName: "circle.fill")
-        case "cross": Image(systemName: "plus")
-        default: Image(systemName: "sparkle")
+            // Center highlight
+            Circle()
+                .fill(Color.white.opacity(0.35))
+                .frame(width: size * 0.45, height: size * 0.45)
+                .offset(x: -size * 0.15, y: -size * 0.15)
         }
     }
 
     // MARK: - Particles & Effects
-    private func triggerEscapeEffects(block: Block, side: ExitSide, cellSize: CGFloat) {
-        let spawnX = CGFloat(block.x) * (cellSize + spacing) + CGFloat(block.width) * cellSize / 2
-        let spawnY = CGFloat(block.y) * (cellSize + spacing) + CGFloat(block.height) * cellSize / 2
+    private func triggerEscapeEffects(block: Block, side: ExitSide, cellSize: CGFloat, gridStartX: CGFloat, gridStartY: CGFloat) {
+        let spawnX = gridStartX + CGFloat(block.x) * cellSize + CGFloat(block.width) * cellSize / 2
+        let spawnY = gridStartY + CGFloat(block.y) * cellSize + CGFloat(block.height) * cellSize / 2
 
-        // Add 16 colorful spark particles
-        for _ in 0..<16 {
+        // Add 24 colorful particles
+        for _ in 0..<24 {
             let p = Particle(
                 x: spawnX,
                 y: spawnY,
-                vx: CGFloat.random(in: -4...4),
-                vy: CGFloat.random(in: -5...2),
+                vx: CGFloat.random(in: -5...5),
+                vy: CGFloat.random(in: -6...2),
                 size: CGFloat.random(in: 6...12),
                 rotation: Double.random(in: 0...Double.pi * 2),
                 vRot: Double.random(in: -0.2...0.2),
-                color: block.color.mainColor
+                color: Bool.random() ? block.color.mainColor : .white
             )
             particles.append(p)
         }
@@ -439,7 +520,6 @@ public struct GameBoardCanvas: View {
         let comboText = engine.comboMultiplier > 1 ? "+\(pts) (x\(engine.comboMultiplier) COMBO!)" : "+\(pts)"
         floatingScores.append(FloatingScore(text: comboText, x: spawnX, y: spawnY, color: block.color.lightColor))
 
-        // Trigger loop updates
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) {
             animateEffects()
         }
@@ -507,4 +587,3 @@ public struct GameBoardCanvas: View {
         .allowsHitTesting(false)
     }
 }
-

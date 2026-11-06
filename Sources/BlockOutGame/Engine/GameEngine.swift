@@ -45,9 +45,9 @@ public struct MoveResult: Equatable, Sendable {
 }
 
 public final class GameEngine: ObservableObject {
-    public let level: Level
-    public let gridWidth: Int
-    public let gridHeight: Int
+    public private(set) var level: Level
+    public private(set) var gridWidth: Int
+    public private(set) var gridHeight: Int
 
     @Published public private(set) var blocks: [Block] = []
     @Published public private(set) var doors: [ExitDoor] = []
@@ -101,10 +101,32 @@ public final class GameEngine: ObservableObject {
         self.level = level
         self.gridWidth = level.gridWidth
         self.gridHeight = level.gridHeight
-        self.doors = level.doors
-        self.obstacles = level.obstacles
         self.onBlockEscaped = onBlockEscaped
         self.onLevelWon = onLevelWon
+        setupWithLevel(level)
+    }
+
+    public func reset(level: Level? = nil) {
+        let lvl = level ?? self.level
+        setupWithLevel(lvl)
+    }
+
+    private func setupWithLevel(_ level: Level) {
+        self.level = level
+        self.gridWidth = level.gridWidth
+        self.gridHeight = level.gridHeight
+        self.doors = level.doors
+        self.obstacles = level.obstacles
+        self.movesMade = 0
+        self.extraMovesAdded = 0
+        self.currentScore = 0
+        self.comboMultiplier = 1
+        self.movesBonus = 0
+        self.levelClearBonus = 0
+        self.isWon = false
+        self.isGameOver = false
+        self.lastEscapeTime = nil
+        self.undoStack.removeAll()
 
         // Enforce 100% overlap-free block positioning
         var occupied = Set<String>()

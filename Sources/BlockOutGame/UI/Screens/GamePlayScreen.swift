@@ -69,8 +69,10 @@ public struct GamePlayScreen: View {
                         showSettings = true
                     }
                 )
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 GameBoardCanvas(
                     engine: engine,
@@ -106,9 +108,9 @@ public struct GamePlayScreen: View {
                         onProgressUpdated(updated)
                     }
                 )
-                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 BoosterBar(
                     undoCount: progress.undoCount,
@@ -151,7 +153,15 @@ public struct GamePlayScreen: View {
                         if progress.hammerCount > 0 {
                             soundManager.playClick()
                             HapticManager.shared.mediumTap()
-                            isHammerActive.toggle()
+                            if engine.destroyAnyObstacle() {
+                                soundManager.playHammerSmash()
+                                HapticManager.shared.heavyTap()
+                                var updated = progress
+                                updated.hammerCount = max(0, updated.hammerCount - 1)
+                                onProgressUpdated(updated)
+                            } else {
+                                isHammerActive.toggle()
+                            }
                         }
                     }
                 )
@@ -171,12 +181,15 @@ public struct GamePlayScreen: View {
                     parMoves: level.parMoves,
                     onNextLevel: {
                         soundManager.playClick()
-                        let nextId = level.id == 9999 ? 1 : (level.id % 36 + 1)
+                        let nextId = (level.id == 9999) ? 1 : (level.id >= 36 ? 1 : level.id + 1)
                         onLevelCompleted(level.id, stars, coinsEarned, finalScore)
                         onNextLevel(nextId)
                     },
                     onReplay: {
                         soundManager.playClick()
+                        engine.reset(level: level)
+                        remainingSeconds = level.timeSeconds
+                        isHammerActive = false
                         onNextLevel(level.id)
                     },
                     onHome: {
@@ -197,6 +210,9 @@ public struct GamePlayScreen: View {
                     },
                     onRetry: {
                         soundManager.playClick()
+                        engine.reset(level: level)
+                        remainingSeconds = level.timeSeconds
+                        isHammerActive = false
                         onNextLevel(level.id)
                     },
                     onHome: {
@@ -258,6 +274,11 @@ public struct GamePlayScreen: View {
                 soundManager.playGameOver()
                 HapticManager.shared.warning()
             }
+        }
+        .onChange(of: level.id) { _ in
+            engine.reset(level: level)
+            remainingSeconds = level.timeSeconds
+            isHammerActive = false
         }
     }
 }

@@ -15,6 +15,7 @@ public struct ContentView: View {
     @State private var progress: GameProgress = GameProgress()
     @State private var currentScreen: AppScreen = .home
     @State private var showSettingsDialog: Bool = false
+    @State private var gameSessionId: UUID = UUID()
 
     public init() {}
 
@@ -28,10 +29,12 @@ public struct ContentView: View {
                     progress: progress,
                     onContinueLevel: { lvlId in
                         soundManager.playClick()
+                        gameSessionId = UUID()
                         currentScreen = .game(levelId: lvlId)
                     },
                     onDailyPuzzle: {
                         soundManager.playClick()
+                        gameSessionId = UUID()
                         currentScreen = .game(levelId: 9999)
                     },
                     onLevelSelect: {
@@ -105,15 +108,19 @@ public struct ContentView: View {
                         currentScreen = .home
                     },
                     onNextLevel: { nextId in
+                        soundManager.playClick()
+                        gameSessionId = UUID()
                         currentScreen = .game(levelId: nextId)
                     }
                 )
+                .id("game-\(levelId)-\(gameSessionId)")
 
             case .levelSelect:
                 LevelSelectScreen(
                     progress: progress,
                     onLevelSelected: { lvlId in
                         soundManager.playClick()
+                        gameSessionId = UUID()
                         currentScreen = .game(levelId: lvlId)
                     },
                     onBack: {
