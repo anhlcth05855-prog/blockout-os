@@ -47,6 +47,7 @@ jobs:
 
       - name: 🔨 Build iOS Application (.app)
         run: |
+          set -o pipefail
           xcodebuild clean build \
             -project BlockOut.xcodeproj \
             -scheme BlockOut \
@@ -57,7 +58,8 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            CODE_SIGN_STYLE="Manual" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee xcodebuild.log || (echo "❌❌❌ BUILD FAILED! Log output: ❌❌❌" && tail -n 120 xcodebuild.log && exit 1)
 
       - name: 📦 Package into .ipa
         run: |
