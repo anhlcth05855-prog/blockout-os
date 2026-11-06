@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 public final class PreferencesManager: ObservableObject {
     public static let shared = PreferencesManager()

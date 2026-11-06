@@ -105,5 +105,9 @@ public extension Color {
         let b = Double(hex & 0xFF) / 255.0
         self.init(.sRGB, red: r, green: g, blue: b, opacity: alpha)
     }
+
+    init(hex: Int, alpha: Double = 1.0) {
+        self.init(hex: UInt64(bitPattern: Int64(hex)), alpha: alpha)
+    }
 }
 

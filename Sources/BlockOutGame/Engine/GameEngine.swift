@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 public struct DragLimits: Equatable, Sendable {
     public let minXOnBoard: Int

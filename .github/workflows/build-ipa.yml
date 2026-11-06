@@ -59,7 +59,15 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_STYLE="Manual" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee xcodebuild.log || (echo "❌❌❌ BUILD FAILED! Log output: ❌❌❌" && tail -n 120 xcodebuild.log && exit 1)
+            AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee xcodebuild.log || (echo "❌ BUILD FAILED! Compiler errors:" && grep -C 3 -i "error:" xcodebuild.log && exit 1)
+
+      - name: 📋 Upload Build Log (if failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-failure-log
+          path: xcodebuild.log
+          retention-days: 7
 
       - name: 📦 Package into .ipa
         run: |
