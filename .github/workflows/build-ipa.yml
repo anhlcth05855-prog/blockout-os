@@ -19,6 +19,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build-ipa:
     name: Build & Package BlockOut.ipa
@@ -29,7 +32,7 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🔍 Check Xcode Environment
+      - name: 🔍 Check Xcode Environment & Destinations
         run: |
           xcodebuild -version
           xcrun --show-sdk-path --sdk iphoneos
@@ -55,16 +58,25 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "${PWD}/DerivedData" \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_STYLE="Manual" 2>&1 | tee xcodebuild.log || {
-              echo "## ❌ Xcode Build Errors" >> $GITHUB_STEP_SUMMARY
-              echo '```text' >> $GITHUB_STEP_SUMMARY
-              grep -E "(error:|fatal error:|BUILD FAILED)" xcodebuild.log -C 2 | tail -n 60 >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              exit 1
-            }
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_STYLE="Manual" 2>&1 | tee xcodebuild.log
+
+      - name: 📝 Push failure log on error
+        if: failure()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B build-log
+          cp xcodebuild.log build-error.log
+          git add build-error.log
+          git commit -m "Add build error log [skip ci]" || true
+          git push -f origin build-log || true
+          echo "## ❌ Build Failure Log Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          tail -n 60 xcodebuild.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: 📋 Upload Build Log (if failed)
         if: failure()
@@ -84,7 +96,7 @@ jobs:
           fi
           echo "✅ Found app at: ${APP_PATH}"
           
-          # Ad-Hoc sign the app bundle so it can be installed on iOS
+          # Ad-Hoc sign the app bundle
           codesign --force --deep --sign - "${APP_PATH}" || true
 
           mkdir -p Payload
