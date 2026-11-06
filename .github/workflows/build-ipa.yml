@@ -47,6 +47,7 @@ jobs:
 
       - name: 🔨 Build iOS Application (.app)
         run: |
+          set -o pipefail
           xcodebuild clean build \
             -project BlockOut.xcodeproj \
             -scheme BlockOut \
@@ -54,11 +55,24 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "${PWD}/DerivedData" \
-            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGN_STYLE="Manual" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_STYLE="Manual" 2>&1 | tee xcodebuild.log || {
+              echo "## ❌ Xcode Build Errors" >> $GITHUB_STEP_SUMMARY
+              echo '```text' >> $GITHUB_STEP_SUMMARY
+              grep -E "(error:|fatal error:|BUILD FAILED)" xcodebuild.log -C 2 | tail -n 60 >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              exit 1
+            }
+
+      - name: 📋 Upload Build Log (if failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-failure-log
+          path: xcodebuild.log
+          retention-days: 7
 
       - name: 📦 Package into .ipa
         run: |
@@ -69,6 +83,10 @@ jobs:
             exit 1
           fi
           echo "✅ Found app at: ${APP_PATH}"
+          
+          # Ad-Hoc sign the app bundle so it can be installed on iOS
+          codesign --force --deep --sign - "${APP_PATH}" || true
+
           mkdir -p Payload
           cp -R "${APP_PATH}" Payload/
           zip -r -9 "${GITHUB_WORKSPACE}/BlockOut.ipa" Payload
