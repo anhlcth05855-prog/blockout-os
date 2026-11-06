@@ -12,7 +12,7 @@ public struct HomeScreen: View {
     public init(
         progress: GameProgress,
         onContinueLevel: @escaping (Int) -> Void,
-        onDailyPuzzle: @escaping (Int) -> Void, // Note: closure signature
+        onDailyPuzzle: @escaping () -> Void,
         onLevelSelect: @escaping () -> Void,
         onThemes: @escaping () -> Void,
         onMissions: @escaping () -> Void,
@@ -20,7 +20,7 @@ public struct HomeScreen: View {
     ) {
         self.progress = progress
         self.onContinueLevel = onContinueLevel
-        self.onDailyPuzzle = { onDailyPuzzle(9999) }
+        self.onDailyPuzzle = onDailyPuzzle
         self.onLevelSelect = onLevelSelect
         self.onThemes = onThemes
         self.onMissions = onMissions

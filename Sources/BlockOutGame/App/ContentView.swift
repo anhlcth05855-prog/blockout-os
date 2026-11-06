@@ -30,7 +30,7 @@ public struct ContentView: View {
                         soundManager.playClick()
                         currentScreen = .game(levelId: lvlId)
                     },
-                    onDailyPuzzle: { _ in
+                    onDailyPuzzle: {
                         soundManager.playClick()
                         currentScreen = .game(levelId: 9999)
                     },

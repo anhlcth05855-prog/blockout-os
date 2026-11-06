@@ -132,7 +132,7 @@ public final class GameEngine: ObservableObject {
                     for c in 0...(max(0, gridWidth - blk.width)) {
                         var testCells: [(x: Int, y: Int)] = []
                         for tc in c..<(c + blk.width) {
-                            for tr in r..<(tr + blk.height) {
+                            for tr in r..<(r + blk.height) {
                                 testCells.append((tc, tr))
                             }
                         }

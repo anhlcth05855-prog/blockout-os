@@ -47,7 +47,6 @@ jobs:
 
       - name: 🔨 Build iOS Application (.app)
         run: |
-          set -o pipefail
           xcodebuild clean build \
             -project BlockOut.xcodeproj \
             -scheme BlockOut \
