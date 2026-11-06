@@ -186,7 +186,7 @@ public enum LevelRepository {
 
     public static func getDailyPuzzle() -> Level {
         let calendar = Calendar.current
-        let dayOfYear = calendar.ordinal(of: .day, in: .year, for: Date()) ?? 1
+        let dayOfYear = calendar.ordinality(of: .day, in: .year, for: Date()) ?? 1
         let year = calendar.component(.year, from: Date())
         var rng = LinearCongruentialGenerator(seed: UInt64(year * 366 + dayOfYear))
 
