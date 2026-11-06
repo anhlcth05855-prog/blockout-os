@@ -99,15 +99,11 @@ public enum BlockColor: String, CaseIterable, Codable, Identifiable, Sendable {
 
 // Color hex helper
 public extension Color {
-    init(hex: UInt64, alpha: Double = 1.0) {
+    init(hex: UInt, alpha: Double = 1.0) {
         let r = Double((hex >> 16) & 0xFF) / 255.0
         let g = Double((hex >> 8) & 0xFF) / 255.0
         let b = Double(hex & 0xFF) / 255.0
         self.init(.sRGB, red: r, green: g, blue: b, opacity: alpha)
-    }
-
-    init(hex: Int, alpha: Double = 1.0) {
-        self.init(hex: UInt64(bitPattern: Int64(hex)), alpha: alpha)
     }
 }
 
