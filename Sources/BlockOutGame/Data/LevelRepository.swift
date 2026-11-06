@@ -133,7 +133,7 @@ public enum LevelRepository {
             name: "The Canyon Mill",
             description: "Rotating four-quadrant mill mechanisms driving canyon gates.",
             difficulty: "ADEPT",
-            world = 1,
+            world: 1,
             gridWidth: 6,
             gridHeight: 6,
             blocks: [

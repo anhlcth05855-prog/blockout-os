@@ -54,17 +54,22 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
+            -derivedDataPath "${PWD}/DerivedData" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            CONFIGURATION_BUILD_DIR="${PWD}/build/Release-iphoneos"
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: 📦 Package into .ipa
         run: |
-          cd build/Release-iphoneos
+          APP_PATH=$(find "${PWD}/DerivedData/Build/Products" -name "BlockOut.app" -type d | head -n 1)
+          if [ -z "${APP_PATH}" ]; then
+            echo "❌ Error: BlockOut.app not found in DerivedData"
+            exit 1
+          fi
+          echo "✅ Found app at: ${APP_PATH}"
           mkdir -p Payload
-          cp -R BlockOut.app Payload/
+          cp -R "${APP_PATH}" Payload/
           zip -r -9 "${GITHUB_WORKSPACE}/BlockOut.ipa" Payload
           cd "${GITHUB_WORKSPACE}"
           shasum -a 256 BlockOut.ipa > BlockOut.ipa.sha256
